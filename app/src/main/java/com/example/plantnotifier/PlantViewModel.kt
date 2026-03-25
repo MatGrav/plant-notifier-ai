@@ -1,26 +1,118 @@
 package com.example.plantnotifier
 
+// Backup
 import android.app.Application
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
 import android.net.Uri
+import android.os.Environment
+import androidx.core.app.NotificationCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.launch
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-// Backup
-import android.os.Environment
-import java.io.File
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
-import androidx.core.net.toUri
-import androidx.core.graphics.scale
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class PlantViewModel(application: Application) : AndroidViewModel(application) {
     private val db = PlantDatabase.getDatabase(application)
     private val dao = db.plantDao()
+
+    fun runManualCheckAndTest() {
+        val context = getApplication<Application>().applicationContext
+
+        // 1. Questa arriva sempre perché è fuori dalla coroutine "sospettata"
+        sendNotification(context, "Il sistema di notifiche è attivo! 🛠️", isTest = true)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                // USIAMO LA NUOVA FUNZIONE SNAPSHOT (Senza .first())
+                val plants = dao.getAllPlantsSnapshot()
+
+                // Filtriamo
+                val thirstyPlants = plants.filter { plant ->
+                    getDaysRemaining(plant.lastWatered, plant.wateringDays) <= 0
+                }
+
+                // Torniamo sul thread principale per mostrare il risultato
+                withContext(Dispatchers.Main) {
+                    if (thirstyPlants.isNotEmpty()) {
+                        sendNotification(context, "Hai ${thirstyPlants.size} piante che hanno sete! 💧", isTest = false)
+                    } else {
+                        // SE ARRIVA QUESTA, IL DATABASE È STATO LETTO MA NON CI SONO PIANTE IN SCADENZA
+                        sendNotification(context, "Check completato: nessuna pianta ha sete.", isTest = false)
+                    }
+                }
+            } catch (e: Exception) {
+                // Se c'è un errore, lo vedrai nella notifica invece che nel log silenzioso
+                withContext(Dispatchers.Main) {
+                    sendNotification(context, "Errore DB: ${e.message}", isTest = false)
+                }
+            }
+        }
+    }
+
+    // Funzione privata per creare la notifica (da mettere nel ViewModel o in un Helper)
+    private fun sendNotification(context: Context, message: String, isTest: Boolean) {
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channelId = "watering_channel"
+
+        // Usiamo ID diversi per non sovrascrivere la notifica di test con quella reale
+        val notificationId = if (isTest) 999 else 1
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context, notificationId, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_notification_plant)
+            .setContentTitle(if (isTest) "Test Notifica" else "Plant Notifier 🌿")
+            .setContentText(message)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setColor(Color.parseColor("#4CAF50"))
+
+        notificationManager.notify(notificationId, builder.build())
+    }
+
+    object NotificationHelper {
+        fun showWateringNotification(context: Context, plantName: String) {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channelId = "watering_channel"
+
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+
+            val pendingIntent = PendingIntent.getActivity(
+                context, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val builder = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(R.drawable.ic_notification_plant) // La tua nuova icona!
+                .setContentTitle("Cura Piante 🌿")
+                .setContentText("È ora di bagnare $plantName!")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setColor(Color.parseColor("#4CAF50"))
+
+            notificationManager.notify(plantName.hashCode(), builder.build())
+        }
+    }
 
     val allPlants: Flow<List<Plant>> = dao.getAllPlants().map { listaPiante ->
         listaPiante.sortedWith(
@@ -29,7 +121,7 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    private fun rotateImageIfRequired(context: android.content.Context, img: android.graphics.Bitmap, selectedImage: Uri): android.graphics.Bitmap {
+    private fun rotateImageIfRequired(context: Context, img: android.graphics.Bitmap, selectedImage: Uri): android.graphics.Bitmap {
         val input = context.contentResolver.openInputStream(selectedImage)
         val ei = androidx.exifinterface.media.ExifInterface(input!!)
         val orientation = ei.getAttributeInt(androidx.exifinterface.media.ExifInterface.TAG_ORIENTATION, androidx.exifinterface.media.ExifInterface.ORIENTATION_NORMAL)
@@ -48,7 +140,7 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         return android.graphics.Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
-    private fun saveImageToInternalStorage(context: android.content.Context, uri: Uri): String? {
+    private fun saveImageToInternalStorage(context: Context, uri: Uri): String? {
         return try {
             val inputStream = context.contentResolver.openInputStream(uri)
             var bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
@@ -80,22 +172,45 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
     fun testNotification() {
-        val context = getApplication<android.app.Application>().applicationContext
-        val notificationManager = context.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
-        val channelId = "watering_channel"
+        val context = getApplication<Application>().applicationContext
 
-        val notification = androidx.core.app.NotificationCompat.Builder(context, channelId)
-            .setSmallIcon(android.R.drawable.ic_dialog_info) // Icona di sistema sicura
-            .setContentTitle("Test Notifica 🌿")
-            .setContentText("Il canale ora è attivo! Le notifiche funzionano.")
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build()
+        // Proviamo a prendere il nome della prima pianta se disponibile,
+        // altrimenti usiamo un nome generico per il test.
+        // Usiamo 'allPlants.value' solo se allPlants è un MutableStateFlow.
+        // Se ti dà ancora errore su .value, usa direttamente un nome fisso per il test:
+        val plantNameForTest = "Pianta di Test 🌿"
 
-        notificationManager.notify(99, notification)
+        // Chiamiamo il nostro helper (o il codice della notifica)
+        showNotificationInternal(context, plantNameForTest)
     }
 
-    fun addPlant(context: android.content.Context, name: String, waterDays: Int, fertDays: Int, lastW: Long, lastF: Long, imageUriString: String?) {
+    // Funzione di supporto interna per non ripetere il codice
+    private fun showNotificationInternal(context: Context, name: String) {
+        val notificationManager = context.getSystemService(NotificationManager::class.java)
+        val channelId = "watering_channel"
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+
+        val pendingIntent = PendingIntent.getActivity(
+            context, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val builder = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_notification_plant)
+            .setContentTitle("Cura Piante")
+            .setContentText("È ora di bagnare $name!")
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .setColor(Color.parseColor("#4CAF50"))
+
+        notificationManager?.notify(999, builder.build())
+    }
+
+    fun addPlant(context: Context, name: String, waterDays: Int, fertDays: Int, lastW: Long, lastF: Long, imageUriString: String?) {
         viewModelScope.launch {
             var finalPath: String? = imageUriString
 
@@ -142,7 +257,7 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updatePlant(context: android.content.Context, plant: Plant, newImageUriString: String?) {
+    fun updatePlant(context: Context, plant: Plant, newImageUriString: String?) {
         viewModelScope.launch {
             var finalPath: String? = newImageUriString
 
@@ -161,7 +276,7 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
             dao.insertPlant(updatedPlant)
         }
     }
-    fun exportDataToJSON(context: android.content.Context) {
+    fun exportDataToJSON(context: Context) {
         viewModelScope.launch {
             // 1. Prendi tutte le piante
             val plants = dao.getAllPlants().first()
@@ -192,7 +307,7 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-    fun importDataFromJSON(context: android.content.Context, uri: android.net.Uri) {
+    fun importDataFromJSON(context: Context, uri: Uri) {
         viewModelScope.launch {
             try {
                 val jsonString = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
@@ -247,7 +362,7 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-    fun autoBackup(context: android.content.Context) {
+    fun autoBackup(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val plants = dao.getAllPlants().first()

@@ -1,15 +1,13 @@
 package com.example.plantnotifier
 
+import android.app.NotificationManager
 import android.content.Context
+import android.os.Environment
+import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import androidx.core.app.NotificationCompat
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.os.Build
 import kotlinx.coroutines.flow.first
 import java.io.File
-import android.os.Environment
 
 class WateringWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
@@ -28,17 +26,15 @@ class WateringWorker(context: Context, params: WorkerParameters) : CoroutineWork
         }
 
         // 3. Se c'è almeno una pianta che ha bisogno di cure, invia la notifica
-        if (thirstyPlants.isNotEmpty() || hungryPlants.isNotEmpty()) {
+        if (thirstyPlants.isNotEmpty()) {
             val title = "Cure necessarie per le tue piante! 🌿"
 
             // Costruiamo un messaggio dinamico
             val message = when {
-                thirstyPlants.isNotEmpty() && hungryPlants.isNotEmpty() ->
+                hungryPlants.isNotEmpty() ->
                     "Hai ${thirstyPlants.size} piante da bagnare e ${hungryPlants.size} da concimare!"
-                thirstyPlants.isNotEmpty() ->
-                    "Hai ${thirstyPlants.size} piante che hanno sete! 💧"
                 else ->
-                    "È ora di concimare ${hungryPlants.size} piante! 🧪"
+                    "Hai ${thirstyPlants.size} piante che hanno sete! 💧"
             }
 
             sendNotification(message) // Passiamo la stringa alla funzione di notifica
@@ -53,15 +49,30 @@ class WateringWorker(context: Context, params: WorkerParameters) : CoroutineWork
     }
 
     private fun sendNotification(message: String) {
-        val notificationManager = applicationContext.getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val context = applicationContext
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         val channelId = "watering_channel"
 
-        val notification = androidx.core.app.NotificationCompat.Builder(applicationContext, channelId)
-            .setSmallIcon(android.R.drawable.ic_menu_myplaces) // Un'icona a forma di fogliolina/mappa
-            .setContentTitle("Plant Notifier")
+        // Creiamo l'intent per aprire l'app al click
+        val intent = android.content.Intent(context, MainActivity::class.java).apply {
+            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+
+        val pendingIntent = android.app.PendingIntent.getActivity(
+            context,
+            0,
+            intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, channelId)
+            .setSmallIcon(R.drawable.ic_notification_plant) // L'icona stilizzata che abbiamo creato
+            .setContentTitle("Plant Notifier 🌿")
             .setContentText(message)
-            .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setContentIntent(pendingIntent) // <--- AGGIUNTO: ora la notifica è cliccabile!
+            .setAutoCancel(true) // Scompare dopo il click
+            .setColor(android.graphics.Color.parseColor("#4CAF50")) // Verde natura
             .build()
 
         notificationManager.notify(1, notification)
