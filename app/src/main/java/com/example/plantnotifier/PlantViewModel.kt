@@ -36,9 +36,9 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
                 // USIAMO LA NUOVA FUNZIONE SNAPSHOT (Senza .first())
                 val plants = dao.getAllPlantsSnapshot()
 
-                // Filtriamo
+                // Filtriamo solo le piante NON archiviate
                 val thirstyPlants = plants.filter { plant ->
-                    getDaysRemaining(plant.lastWatered, plant.wateringDays) <= 0
+                    !plant.isArchived && getDaysRemaining(plant.lastWatered, plant.wateringDays) <= 0
                 }
 
                 // Torniamo sul thread principale per mostrare il risultato
@@ -114,11 +114,15 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    val allPlants: Flow<List<Plant>> = dao.getAllPlants().map { listaPiante ->
+    val allPlants: Flow<List<Plant>> = dao.getActivePlants().map { listaPiante ->
         listaPiante.sortedWith(
             compareBy<Plant> { it.lastWatered + (it.wateringDays * 24 * 60 * 60 * 1000L) }
                 .thenBy { it.name }
         )
+    }
+
+    val archivedPlants: Flow<List<Plant>> = dao.getArchivedPlants().map { listaPiante ->
+        listaPiante.sortedBy { it.name }
     }
 
     private fun rotateImageIfRequired(context: Context, img: android.graphics.Bitmap, selectedImage: Uri): android.graphics.Bitmap {
@@ -240,7 +244,7 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
 
     fun postponeWatering(plantId: Int, days: Int) {
         viewModelScope.launch {
-            val currentPlants = dao.getAllPlants().first()
+            val currentPlants = dao.getActivePlants().first()
             val plant = currentPlants.find { it.id == plantId }
             plant?.let {
                 // Spostiamo l'ultimo "annaffiamento" in avanti,
@@ -254,6 +258,18 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
     fun deletePlant(plant: Plant) {
         viewModelScope.launch {
             dao.deletePlant(plant)
+        }
+    }
+
+    fun archivePlant(plantId: Int) {
+        viewModelScope.launch {
+            dao.updateArchivedStatus(plantId, true)
+        }
+    }
+
+    fun unarchivePlant(plantId: Int) {
+        viewModelScope.launch {
+            dao.updateArchivedStatus(plantId, false)
         }
     }
 
@@ -279,19 +295,24 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
     fun exportDataToJSON(context: Context) {
         viewModelScope.launch {
             // 1. Prendi tutte le piante
-            val plants = dao.getAllPlants().first()
+            val plants = dao.getAllPlantsSnapshot()
 
             // 2. Crea il contenuto JSON (molto semplificato)
             val jsonString = StringBuilder().append("[\n")
             plants.forEachIndexed { index, plant ->
-                // Modifica la parte dentro il ciclo forEach:
+                val imageName = plant.imagePath?.let { File(it).name }
+
                 jsonString.append("  {\n")
                 jsonString.append("    \"name\": \"${plant.name}\",\n")
                 jsonString.append("    \"days\": ${plant.wateringDays},\n")
                 jsonString.append("    \"lastWatered\": ${plant.lastWatered},\n")
-                jsonString.append("    \"fertDays\": ${plant.fertilizationDays},\n") // AGGIUNTO
-                jsonString.append("    \"lastFert\": ${plant.lastFertilized}\n")    // AGGIUNTO
+                jsonString.append("    \"fertDays\": ${plant.fertilizationDays},\n")
+                jsonString.append("    \"lastFert\": ${plant.lastFertilized},\n")
+                jsonString.append("    \"isArchived\": ${plant.isArchived},\n")
+                jsonString.append("    \"imageName\": ${if (imageName != null) "\"$imageName\"" else "null"}\n")
                 jsonString.append("  }")
+                if (index < plants.size - 1) jsonString.append(",")
+                jsonString.append("\n")
             }
             jsonString.append("]")
 
@@ -317,20 +338,26 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
 
                 val plantsList = mutableListOf<Plant>()
 
-                // Regex più flessibile: gestisce spazi, a capo e campi extra
-// Versione super-semplice per catturare tutto ciò che somiglia a una pianta
-                val regex = Regex("""name":\s*"(.*?)".*?days":\s*(\d+).*?lastWatered":\s*(\d+).*?fertDays":\s*(\d+).*?lastFert":\s*(\d+)""", RegexOption.DOT_MATCHES_ALL)
+                // Regex aggiornata per includere l'opzionale imageName
+                val regex = Regex("""name":\s*"(.*?)".*?days":\s*(\d+).*?lastWatered":\s*(\d+).*?fertDays":\s*(\d+).*?lastFert":\s*(\d+)(?:.*?isArchived":\s*(true|false))?(?:.*?imageName":\s*(?:"(.*?)"|null))?""", RegexOption.DOT_MATCHES_ALL)
                 val matches = regex.findAll(jsonString).toList()
                 android.util.Log.d("PLANT_DEBUG", "Piante trovate nella Regex: ${matches.size}")
 
                 matches.forEach { match ->
+                    val imageName = match.groupValues.getOrNull(7)
+                    val fullPath = if (!imageName.isNullOrBlank()) {
+                        val file = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), imageName)
+                        if (file.exists()) file.absolutePath else null
+                    } else null
+
                     plantsList.add(Plant(
                         name = match.groupValues[1],
                         wateringDays = match.groupValues[2].toInt(),
                         lastWatered = match.groupValues[3].toLong(),
-                        imagePath = null,
-                        fertilizationDays = match.groupValues[4].toInt(), // LEGGE DAL FILE
-                        lastFertilized = match.groupValues[5].toLong()    // LEGGE DAL FILE
+                        imagePath = fullPath,
+                        fertilizationDays = match.groupValues[4].toInt(),
+                        lastFertilized = match.groupValues[5].toLong(),
+                        isArchived = match.groupValues[6].toBoolean()
                     ))
                 }
 
@@ -350,8 +377,8 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun fertilizePlant(plantId: Int) {
         viewModelScope.launch {
-            // Usa getAllPlants() (con le parentesi) se è così che l'hai chiamata nel DAO
-            val plants = dao.getAllPlants().first()
+            // Usa getAllPlantsSnapshot() per essere sicuri di avere i dati
+            val plants = dao.getAllPlantsSnapshot()
             val plant = plants.find { it.id == plantId }
 
             plant?.let {
@@ -365,17 +392,21 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
     fun autoBackup(context: Context) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val plants = dao.getAllPlants().first()
+                val plants = dao.getAllPlantsSnapshot()
                 if (plants.isEmpty()) return@launch
 
                 val jsonString = StringBuilder("[\n")
                 plants.forEachIndexed { index, plant ->
+                    val imageName = plant.imagePath?.let { File(it).name }
+
                     jsonString.append("  {\n")
                     jsonString.append("    \"name\": \"${plant.name}\",\n")
                     jsonString.append("    \"days\": ${plant.wateringDays},\n")
                     jsonString.append("    \"lastWatered\": ${plant.lastWatered},\n")
                     jsonString.append("    \"fertDays\": ${plant.fertilizationDays},\n")
-                    jsonString.append("    \"lastFert\": ${plant.lastFertilized}\n")
+                    jsonString.append("    \"lastFert\": ${plant.lastFertilized},\n")
+                    jsonString.append("    \"isArchived\": ${plant.isArchived},\n")
+                    jsonString.append("    \"imageName\": ${if (imageName != null) "\"$imageName\"" else "null"}\n")
                     jsonString.append("  }${if (index < plants.size - 1) "," else ""}\n")
                 }
                 jsonString.append("]")
@@ -394,13 +425,12 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // Variabili per memorizzare l'ultimo stato prima della modifica (per l'annulla)
-    // Variabile per memorizzare l'ultimo stato prima della modifica
     private var lastPlantState: Plant? = null
 
     fun waterPlantWithUndo(plantId: Int) {
         viewModelScope.launch {
             // Dato che allPlants è un Flow, dobbiamo estrarre la lista attuale
-            val currentPlants = dao.getAllPlants().first()
+            val currentPlants = dao.getAllPlantsSnapshot()
             val plant = currentPlants.find { it.id == plantId }
 
             if (plant != null) {
@@ -412,7 +442,7 @@ class PlantViewModel(application: Application) : AndroidViewModel(application) {
 
     fun fertilizePlantWithUndo(plantId: Int) {
         viewModelScope.launch {
-            val currentPlants = dao.getAllPlants().first()
+            val currentPlants = dao.getAllPlantsSnapshot()
             val plant = currentPlants.find { it.id == plantId }
 
             if (plant != null) {

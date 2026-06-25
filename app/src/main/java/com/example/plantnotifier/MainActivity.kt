@@ -1,6 +1,5 @@
 package com.example.plantnotifier
 
-// Se non l'hai già fatto, aggiungi questo per far funzionare le immagini nella modifica
 import android.os.Bundle
 import android.os.Environment
 import androidx.activity.ComponentActivity
@@ -10,17 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -28,56 +17,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.WaterDrop
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DatePicker
-import androidx.compose.material3.DatePickerDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.SnackbarResult
-import androidx.compose.material3.Surface
-import androidx.compose.material3.SwipeToDismissBox
-import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.rememberDatePickerState
-import androidx.compose.material3.rememberSwipeToDismissBoxState
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -89,153 +38,105 @@ import coil.compose.AsyncImage
 import com.example.plantnotifier.ui.theme.PlantNotifierTheme
 import kotlinx.coroutines.launch
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import java.util.concurrent.TimeUnit
-
-
-fun createImageFile(context: android.content.Context): File {
-    val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-    val storageDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
-    return File.createTempFile("PLANT_${timeStamp}_", ".jpg", storageDir)
-}
 
 class MainActivity : ComponentActivity() {
 
     private val viewModel: PlantViewModel by viewModels()
 
-    @OptIn(ExperimentalMaterial3Api::class) // 1. Rimuove l'avviso "Experimental"
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Inserisci questo in onCreate
-        val channelId: String = "watering_channel"
-        val channelName: String = "Cura Piante"
-        val importance: Int = android.app.NotificationManager.IMPORTANCE_HIGH
-
+        
+        // Setup Notifiche
+        val channelId = "watering_channel"
+        val channelName = "Cura Piante"
+        val importance = android.app.NotificationManager.IMPORTANCE_HIGH
         val channel = android.app.NotificationChannel(channelId, channelName, importance).apply {
             description = "Notifiche per acqua e concime"
         }
-
-        val notificationManager =
-            getSystemService(android.content.Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+        val notificationManager = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
         notificationManager.createNotificationChannel(channel)
 
-        // Permessi per notifiche
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-            androidx.core.app.ActivityCompat.requestPermissions(
-                this,
-                arrayOf(android.Manifest.permission.POST_NOTIFICATIONS),
-                101
-            )
+            androidx.core.app.ActivityCompat.requestPermissions(this, arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
         }
 
-        // Configurazione WorkManager
         val wateringRequest = PeriodicWorkRequestBuilder<WateringWorker>(12, TimeUnit.HOURS).build()
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "WateringCheck",
-            androidx.work.ExistingPeriodicWorkPolicy.KEEP,
-            wateringRequest
-        )
+        WorkManager.getInstance(this).enqueueUniquePeriodicWork("WateringCheck", androidx.work.ExistingPeriodicWorkPolicy.KEEP, wateringRequest)
 
         setContent {
-            val snackbarHostState =
-                remember { SnackbarHostState() } // Gestisce la comparsa della barra
-            val scope =
-                rememberCoroutineScope() // Permette di lanciare la snackbar in modo asincrono
-
-            var showDialog by remember { mutableStateOf(false) }
-            val context =
-                androidx.compose.ui.platform.LocalContext.current // 2. Context definito all'inizio
+            val snackbarHostState = remember { SnackbarHostState() }
+            val scope = rememberCoroutineScope()
+            val context = LocalContext.current
 
             PlantNotifierTheme(darkTheme = true) {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background // Questo userà il nero
-                ) {
-                    val context = androidx.compose.ui.platform.LocalContext.current
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     var editingPlant by remember { mutableStateOf<Plant?>(null) }
+                    var selectedTab by remember { mutableIntStateOf(0) }
+                    var showDialog by remember { mutableStateOf(false) }
 
-                    // 1. Il Launcher va dentro setContent!
-                    val importLauncher = rememberLauncherForActivityResult(
-                        contract = ActivityResultContracts.OpenDocument()
-                    ) { uri ->
+                    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
                         uri?.let { viewModel.importDataFromJSON(context, it) }
                     }
 
-                    var showDialog by remember { mutableStateOf(false) }
-                    val plants by viewModel.allPlants.collectAsState(initial = emptyList())
+                    val activePlants by viewModel.allPlants.collectAsState(initial = emptyList())
+                    val archivedPlants by viewModel.archivedPlants.collectAsState(initial = emptyList())
 
                     Scaffold(
                         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-
                         topBar = {
-                            TopAppBar(
-                                title = { Text("Plant Notifier 🌿") },
-                                actions = {
-                                    // TASTO ESPORTA
-                                    IconButton(onClick = { viewModel.exportDataToJSON(context) }) {
-                                        Icon(Icons.Default.Share, "Esporta")
+                            Column {
+                                TopAppBar(
+                                    title = { Text("Plant Notifier 🌿") },
+                                    actions = {
+                                        IconButton(onClick = { viewModel.exportDataToJSON(context) }) { Icon(Icons.Default.Share, "Esporta") }
+                                        IconButton(onClick = { importLauncher.launch(arrayOf("application/json")) }) { Icon(Icons.Default.Refresh, "Importa") }
+                                        IconButton(onClick = { viewModel.runManualCheckAndTest() }) { Icon(Icons.Default.Notifications, "Test") }
                                     }
-                                    // 2. TASTO RIPRISTINA (Chiama il launcher)
-                                    IconButton(onClick = {
-                                        importLauncher.launch(arrayOf("application/json"))
-                                    }) {
-                                        Icon(Icons.Default.Refresh, "Importa")
-                                    }
-                                    // TASTO TEST
-                                    IconButton(onClick = { viewModel.runManualCheckAndTest() }) {
-                                        Icon(Icons.Default.Notifications, "Test")
-                                    }
+                                )
+                                TabRow(selectedTabIndex = selectedTab) {
+                                    Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) { Text("Attive", modifier = Modifier.padding(16.dp)) }
+                                    Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) { Text("Archivio", modifier = Modifier.padding(16.dp)) }
                                 }
-                            )
+                            }
                         },
                         floatingActionButton = {
-                            FloatingActionButton(onClick = { showDialog = true }) {
-                                Icon(Icons.Default.Add, contentDescription = "Aggiungi")
-                            }
+                            FloatingActionButton(onClick = { showDialog = true }) { Icon(Icons.Default.Add, "Aggiungi") }
                         }
                     ) { innerPadding ->
-                        val plants by viewModel.allPlants.collectAsState(initial = emptyList())
+                        val currentPlants = if (selectedTab == 0) activePlants else archivedPlants
 
                         PlantListScreen(
-                            plants = plants,
+                            plants = currentPlants,
                             modifier = Modifier.padding(innerPadding),
-                            onPlantClick = {
-                                editingPlant = it
-                            }, // Quando clicchi, "salvi" la pianta qui
+                            isArchive = selectedTab == 1,
+                            viewModel = viewModel,
+                            onPlantClick = { editingPlant = it },
                             onWaterClick = { plantId ->
                                 viewModel.waterPlantWithUndo(plantId)
                                 scope.launch {
-                                    val result = snackbarHostState.showSnackbar(
-                                        message = "Hai annaffiato! 💧",
-                                        actionLabel = "ANNULLA",
-                                        duration = SnackbarDuration.Short
-                                    )
-                                    if (result == SnackbarResult.ActionPerformed) {
-                                        viewModel.undoLastAction()
-                                    }
+                                    val result = snackbarHostState.showSnackbar("Hai annaffiato! 💧", "ANNULLA", duration = SnackbarDuration.Short)
+                                    if (result == SnackbarResult.ActionPerformed) viewModel.undoLastAction()
                                 }
                             },
                             onDeleteClick = { plant ->
                                 viewModel.deletePlant(plant)
-                                android.widget.Toast.makeText(
-                                    context,
-                                    "${plant.name} eliminata",
-                                    android.widget.Toast.LENGTH_SHORT
-                                ).show()
+                                scope.launch { snackbarHostState.showSnackbar("${plant.name} eliminata") }
+                            },
+                            onArchiveClick = { plant ->
+                                viewModel.archivePlant(plant.id)
+                                scope.launch { snackbarHostState.showSnackbar("${plant.name} archiviata") }
+                            },
+                            onUnarchiveClick = { plant ->
+                                viewModel.unarchivePlant(plant.id)
+                                scope.launch { snackbarHostState.showSnackbar("${plant.name} ripristinata") }
                             },
                             onFertilizeClick = { plantId ->
                                 viewModel.fertilizePlantWithUndo(plantId)
                                 scope.launch {
-                                    val result = snackbarHostState.showSnackbar(
-                                        message = "Hai concimato! ✨",
-                                        actionLabel = "ANNULLA",
-                                        duration = SnackbarDuration.Short
-                                    )
-                                    if (result == SnackbarResult.ActionPerformed) {
-                                        viewModel.undoLastAction()
-                                    }
+                                    val result = snackbarHostState.showSnackbar("Hai concimato! ✨", "ANNULLA", duration = SnackbarDuration.Short)
+                                    if (result == SnackbarResult.ActionPerformed) viewModel.undoLastAction()
                                 }
                             }
                         )
@@ -244,12 +145,7 @@ class MainActivity : ComponentActivity() {
                             EditPlantScreen(
                                 plant = plant,
                                 onPlantUpdated = { updatedPlant ->
-                                    // Passiamo il contesto e il (possibile nuovo) percorso immagine
-                                    viewModel.updatePlant(
-                                        context = context,
-                                        plant = updatedPlant,
-                                        newImageUriString = updatedPlant.imagePath
-                                    )
+                                    viewModel.updatePlant(context, updatedPlant, updatedPlant.imagePath)
                                     editingPlant = null
                                 },
                                 onDismiss = { editingPlant = null }
@@ -259,15 +155,7 @@ class MainActivity : ComponentActivity() {
                         if (showDialog) {
                             AddPlantScreen(
                                 onPlantAdded = { n, w, f, img, lw, lf ->
-                                    viewModel.addPlant(
-                                        context = context, // <--- Passa il context qui
-                                        name = n,
-                                        waterDays = w,
-                                        fertDays = f,
-                                        lastW = lw,
-                                        lastF = lf,
-                                        imageUriString = img
-                                    )
+                                    viewModel.addPlant(context, n, w, f, lw, lf, img)
                                     showDialog = false
                                 },
                                 onDismiss = { showDialog = false }
@@ -278,563 +166,209 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
 
-    fun createImageFile(context: android.content.Context): File {
-        val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-        val storageDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
-        return File.createTempFile("PLANT_${timeStamp}_", ".jpg", storageDir)
-    }
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PlantListScreen(
+    plants: List<Plant>,
+    modifier: Modifier = Modifier,
+    isArchive: Boolean = false,
+    viewModel: PlantViewModel,
+    onWaterClick: (Int) -> Unit,
+    onDeleteClick: (Plant) -> Unit,
+    onArchiveClick: (Plant) -> Unit,
+    onUnarchiveClick: (Plant) -> Unit,
+    onFertilizeClick: (Int) -> Unit,
+    onPlantClick: (Plant) -> Unit
+) {
+    var plantToDelete by remember { mutableStateOf<Plant?>(null) }
+    var plantToArchive by remember { mutableStateOf<Plant?>(null) }
+    var plantToPostpone by remember { mutableStateOf<Plant?>(null) }
 
-    @OptIn(ExperimentalMaterial3Api::class) // <--- Aggiungi questa!
-    @Composable
-    fun PlantListScreen(
-        plants: List<Plant>,
-        modifier: Modifier = Modifier,
-        onWaterClick: (Int) -> Unit,
-        onDeleteClick: (Plant) -> Unit,
-        onFertilizeClick: (Int) -> Unit,
-        onPlantClick: (Plant) -> Unit
-    ) {
-        val snackbarHostState = remember { SnackbarHostState() } // Gestisce la comparsa della barra
-        val scope = rememberCoroutineScope() // Permette di lanciare la snackbar in modo asincrono
-
-        var plantToDelete by remember { mutableStateOf<Plant?>(null) }
-        var plantToPostpone by remember { mutableStateOf<Plant?>(null) }
-
-        Box(modifier = modifier.fillMaxSize()) {
-            if (plants.isEmpty()) {
-                Text("Lista vuota. Clicca +", modifier = Modifier.align(Alignment.Center))
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    items(
-                        plants,
-                        key = { it.id }) { plant -> // Importante aggiungere la key per animazioni fluide
-                        val dismissState = rememberSwipeToDismissBoxState(
-                            confirmValueChange = { value ->
-                                when (value) {
-                                    SwipeToDismissBoxValue.EndToStart -> { // Swipe a Sinistra: ELIMINA
-                                        plantToDelete = plant
-                                        false
-                                    }
-
-                                    SwipeToDismissBoxValue.StartToEnd -> { // Destra: Posticipa
-                                        plantToPostpone = plant // <--- Salviamo la pianta per il dialog
-                                        false
-                                    }
-
-                                    else -> false
+    Box(modifier = modifier.fillMaxSize()) {
+        if (plants.isEmpty()) {
+            Text(if (isArchive) "Archivio vuoto" else "Lista vuota. Clicca +", modifier = Modifier.align(Alignment.Center))
+        } else {
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(plants, key = { it.id }) { plant ->
+                    val dismissState = rememberSwipeToDismissBoxState(
+                        confirmValueChange = { value ->
+                            when (value) {
+                                SwipeToDismissBoxValue.EndToStart -> {
+                                    if (isArchive) plantToDelete = plant else plantToArchive = plant
+                                    false
                                 }
-                            },
-                            positionalThreshold = { it * 0.4f }
-                        )
-
-                        SwipeToDismissBox(
-                            state = dismissState,
-                            enableDismissFromStartToEnd = true,
-                            backgroundContent = {
-                                val direction = dismissState.dismissDirection
-                                val isSwipingLeft = direction == SwipeToDismissBoxValue.EndToStart
-                                val isSwipingRight = direction == SwipeToDismissBoxValue.StartToEnd
-
-                                val backgroundColor = when (direction) {
-                                    SwipeToDismissBoxValue.EndToStart -> Color(0xFFFF5252) // Rosso per eliminare
-                                    SwipeToDismissBoxValue.StartToEnd -> Color(0xFF4CAF50) // Verde per posticipare
-                                    else -> Color.Transparent
+                                SwipeToDismissBoxValue.StartToEnd -> {
+                                    if (isArchive) onUnarchiveClick(plant) else plantToPostpone = plant
+                                    false
                                 }
+                                else -> false
+                            }
+                        }
+                    )
 
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .padding(vertical = 8.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(backgroundColor),
-                                    contentAlignment = if (isSwipingLeft) Alignment.CenterEnd else Alignment.CenterStart
-                                ) {
-                                    if (isSwipingLeft) {
-                                        Icon(
-                                            Icons.Default.Delete,
-                                            contentDescription = "Elimina",
-                                            tint = Color.White,
-                                            modifier = Modifier.padding(end = 24.dp)
-                                        )
-                                    } else if (isSwipingRight) {
-                                        // Icona Orologio per il posticipo
-                                        Icon(
-                                            Icons.Default.Schedule, // Richiede import androidx.compose.material.icons.filled.Schedule
-                                            contentDescription = "Posticipa",
-                                            tint = Color.White,
-                                            modifier = Modifier.padding(start = 24.dp)
-                                        )
-                                    }
+                    SwipeToDismissBox(
+                        state = dismissState,
+                        backgroundContent = {
+                            val direction = dismissState.dismissDirection
+                            val color = when (direction) {
+                                SwipeToDismissBoxValue.EndToStart -> if (isArchive) Color(0xFFFF5252) else Color(0xFFFFB74D)
+                                SwipeToDismissBoxValue.StartToEnd -> Color(0xFF4CAF50)
+                                else -> Color.Transparent
+                            }
+                            Box(modifier = Modifier.fillMaxSize().padding(vertical = 8.dp).clip(RoundedCornerShape(12.dp)).background(color)) {
+                                if (direction == SwipeToDismissBoxValue.EndToStart) {
+                                    Icon(if (isArchive) Icons.Default.Delete else Icons.Default.Archive, null, modifier = Modifier.align(Alignment.CenterEnd).padding(end = 24.dp), tint = Color.White)
+                                } else if (direction == SwipeToDismissBoxValue.StartToEnd) {
+                                    Icon(if (isArchive) Icons.Default.Unarchive else Icons.Default.Schedule, null, modifier = Modifier.align(Alignment.CenterStart).padding(start = 24.dp), tint = Color.White)
                                 }
                             }
-                        ) {
-                            // La tua Card
-                            PlantItem(
-                                plant = plant,
-                                onWaterClick = onWaterClick,
-                                onFertilizeClick = onFertilizeClick,
-                                onPlantClick = onPlantClick,
-                                onDeleteClick = { plantToDelete = it }
-                            )
                         }
-                    }
-                }
-            }
-
-            // DIALOG DI CONFERMA PER POSTICIPO (+3 giorni)
-            if (plantToPostpone != null) {
-                // Stato locale per i giorni scelti (da 1 a 14, default 3)
-                var daysToPostpone by remember { mutableFloatStateOf(3f) }
-
-                AlertDialog(
-                    onDismissRequest = { plantToPostpone = null },
-                    title = { Text("Posticipa di quanti giorni?") },
-                    text = {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "${daysToPostpone.toInt()} giorni",
-                                style = MaterialTheme.typography.headlineMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Slider(
-                                value = daysToPostpone,
-                                onValueChange = { daysToPostpone = it },
-                                valueRange = 1f..14f, // Puoi scegliere da 1 a 14 giorni
-                                steps = 12,           // Crea i "pallini" per ogni giorno intermedio
-                                modifier = Modifier.padding(horizontal = 8.dp)
-                            )
-
-                            Text(
-                                "Sposta la scadenza per ${plantToPostpone?.name}",
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
-                    },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                plantToPostpone?.let {
-                                    viewModel.postponeWatering(it.id, days = daysToPostpone.toInt())
-                                    scope.launch {
-                                        snackbarHostState.showSnackbar("Posticipata di ${daysToPostpone.toInt()} giorni ⏳")
-                                    }
-                                }
-                                plantToPostpone = null
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF4CAF50))
-                        ) { Text("Conferma") }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { plantToPostpone = null }) { Text("Annulla") }
-                    }
-                )
-            }
-
-            // DIALOG DI CONFERMA (Resta qui fuori)
-            if (plantToDelete != null) {
-                AlertDialog(
-                    onDismissRequest = { plantToDelete = null },
-                    title = { Text("Elimina Pianta") },
-                    text = { Text("Sei sicuro di voler eliminare ${plantToDelete?.name}?") },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                plantToDelete?.let { onDeleteClick(it) }
-                                plantToDelete = null
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red)
-                        ) { Text("Elimina", color = Color.White) }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { plantToDelete = null }) { Text("Annulla") }
-                    }
-                )
-            }
-        }
-    }
-
-    // DEFINISCI PLANTITEM QUI FUORI, COME FUNZIONE SEPARATA
-    @Composable
-    fun PlantItem(
-        plant: Plant,
-        onWaterClick: (Int) -> Unit,
-        onFertilizeClick: (Int) -> Unit,
-        onPlantClick: (Plant) -> Unit,
-        onDeleteClick: (Plant) -> Unit
-    ) {
-        val currentTime = System.currentTimeMillis()
-        val dayMillis = 24 * 60 * 60 * 1000L
-        val dateFormatter = SimpleDateFormat("EEE d MMM", Locale.getDefault())
-
-        // --- LOGICA ACQUA ---
-        val nextWateringMillis = plant.lastWatered + (plant.wateringDays * dayMillis)
-        val waterDaysLeft = ((nextWateringMillis - currentTime) / dayMillis).toInt()
-        val waterDateFormatted = dateFormatter.format(Date(nextWateringMillis))
-
-        val waterStatusText = when {
-            waterDaysLeft < 0 -> "IN RITARDO! ⚠️"
-            waterDaysLeft == 0 -> "Bagnare oggi 💧"
-            else -> "Prossima: $waterDateFormatted"
-        }
-        val waterColor = if (waterDaysLeft <= 0) Color(0xFFFF5252) else Color(0xFF81C784)
-
-        // --- LOGICA CONCIME ---
-        val nextFertMillis = plant.lastFertilized + (plant.fertilizationDays * dayMillis)
-        val fertDaysLeft = ((nextFertMillis - currentTime) / dayMillis).toInt()
-        val fertDateFormatted = dateFormatter.format(Date(nextFertMillis))
-
-        val fertStatusText = when {
-            fertDaysLeft < 0 -> "CONCIME SCADUTO! 🧪"
-            fertDaysLeft == 0 -> "Concime oggi"
-            else -> "Concime: $fertDateFormatted"
-        }
-        val fertColor = if (fertDaysLeft <= 0) Color(0xFF9C27B0) else Color.Gray
-
-        // --- DISEGNO DELLA CARD (Mancava questo pezzo!) ---
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(8.dp)
-                .clickable { onPlantClick(plant) },
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                if (plant.imagePath != null) {
-                    AsyncImage(
-                        model = plant.imagePath,
-                        contentDescription = null,
-                        modifier = Modifier.size(60.dp).clip(CircleShape),
-                        contentScale = ContentScale.Crop
-                    )
-                }
-
-                Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-                    Text(plant.name, style = MaterialTheme.typography.titleLarge)
-                    Text(text = waterStatusText, color = waterColor, fontWeight = FontWeight.Bold)
-                    Text(
-                        text = fertStatusText,
-                        color = fertColor,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-
-                IconButton(onClick = { onWaterClick(plant.id) }) {
-                    Icon(
-                        Icons.Default.WaterDrop,
-                        contentDescription = "Bagna",
-                        tint = Color(0xFF2196F3)
-                    )
-                }
-                IconButton(onClick = { onFertilizeClick(plant.id) }) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = "Concima",
-                        tint = Color(0xFF9C27B0)
-                    )
-                }
-                //IconButton(onClick = { onDeleteClick(plant) }) {
-                //    Icon(Icons.Default.Delete, contentDescription = "Elimina", tint = Color.Gray)
-                // }
-            }
-        }
-    }
-
-    @OptIn(ExperimentalMaterial3Api::class)
-    @Composable
-    fun AddPlantScreen(
-        onPlantAdded: (String, Int, Int, String?, Long, Long) -> Unit, // Aggiunti gli ultimi due Long
-        onDismiss: () -> Unit
-    ) {
-        var name by remember { mutableStateOf("") }
-        var waterDays by remember { mutableStateOf("7") }
-        var fertDays by remember { mutableStateOf("30") }
-        var imagePath by remember { mutableStateOf<String?>(null) }
-
-        // STATI PER LE DATE
-        var selectedWateringDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
-        var selectedFertilizedDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
-        var showDatePicker by remember { mutableStateOf(false) }
-        var pickingFor by remember { mutableStateOf("water") }
-
-        val datePickerState =
-            rememberDatePickerState(initialSelectedDateMillis = System.currentTimeMillis())
-        val formatter = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-        val context = androidx.compose.ui.platform.LocalContext.current
-
-        // Launcher (Camera e Galleria) rimangono uguali...
-        val cameraLauncher =
-            rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-                if (!success) imagePath = null
-            }
-        val galleryLauncher =
-            rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-                uri?.let { imagePath = it.toString() }
-            }
-
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text("Nuova Pianta") },
-            text = {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                    // ... (Parte anteprima foto e pulsanti camera/galleria uguale) ...
-
-                    TextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        label = { Text("Nome pianta") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    TextField(
-                        value = waterDays,
-                        onValueChange = { waterDays = it },
-                        label = { Text("Giorni acqua") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    TextField(
-                        value = fertDays,
-                        onValueChange = { fertDays = it },
-                        label = { Text("Giorni concime") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(
-                        "Date ultime cure (opzionale):",
-                        style = MaterialTheme.typography.labelMedium
-                    )
-
-                    // Pulsante Data Acqua
-                    OutlinedButton(
-                        onClick = { pickingFor = "water"; showDatePicker = true },
-                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.WaterDrop, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Acqua: ${formatter.format(Date(selectedWateringDate))}")
+                        PlantItem(plant, isArchive, onWaterClick, onFertilizeClick, onPlantClick)
                     }
-
-                    // Pulsante Data Concime
-                    OutlinedButton(
-                        onClick = { pickingFor = "fert"; showDatePicker = true },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Schedule, null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Concime: ${formatter.format(Date(selectedFertilizedDate))}")
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    if (name.isNotBlank()) {
-                        onPlantAdded(
-                            name,
-                            waterDays.toIntOrNull() ?: 7,
-                            fertDays.toIntOrNull() ?: 30,
-                            imagePath,
-                            selectedWateringDate,
-                            selectedFertilizedDate
-                        )
-                    }
-                }) { Text("Salva") }
-            },
-            dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } }
-        )
-
-        if (showDatePicker) {
-            DatePickerDialog(
-                onDismissRequest = { showDatePicker = false },
-                confirmButton = {
-                    TextButton(onClick = {
-                        val date = datePickerState.selectedDateMillis ?: System.currentTimeMillis()
-                        if (pickingFor == "water") selectedWateringDate = date
-                        else selectedFertilizedDate = date
-                        showDatePicker = false
-                    }) { Text("OK") }
-                }
-            ) { DatePicker(state = datePickerState) }
-        }
-    }
-
-
-
-
-    @OptIn(ExperimentalMaterial3Api::class)
-    @Composable
-    fun EditPlantScreen(
-        plant: Plant,
-        onPlantUpdated: (Plant) -> Unit,
-        onDismiss: () -> Unit
-    ) {
-        var name by remember { mutableStateOf(plant.name) }
-        var waterDays by remember { mutableStateOf(plant.wateringDays.toString()) }
-        var fertDays by remember { mutableStateOf(plant.fertilizationDays.toString()) }
-        var imagePath by remember { mutableStateOf(plant.imagePath) }
-
-        // STATI PER LE DATE
-        var selectedWateringDate by remember { mutableLongStateOf(plant.lastWatered) }
-        var selectedFertilizedDate by remember { mutableLongStateOf(plant.lastFertilized) }
-        var showDatePicker by remember { mutableStateOf(false) }
-        var pickingFor by remember { mutableStateOf("water") }
-
-        val datePickerState = rememberDatePickerState(initialSelectedDateMillis = plant.lastWatered)
-        val formatter = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-        val context = androidx.compose.ui.platform.LocalContext.current
-
-        // Launchers per Foto
-        val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success ->
-            // Se lo scatto ha successo, imagePath contiene già il percorso corretto impostato al click
-        }
-        val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-            uri?.let { imagePath = it.toString() }
-        }
-        var isImageZoomed by remember { mutableStateOf(false) } // Stato per il "tutto schermo"
-        // Se l'immagine è zoomata, mostriamo un overlay a tutto schermo
-        if (isImageZoomed && imagePath != null) {
-            Dialog(
-                onDismissRequest = { isImageZoomed = false },
-                properties = DialogProperties(
-                    usePlatformDefaultWidth = false // Questo permette all'immagine di espandersi di più
-                )
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.9f)) // Sfondo scuro per far risaltare la pianta
-                        .clickable { isImageZoomed = false },
-                    contentAlignment = Alignment.Center
-                ) {
-                    AsyncImage(
-                        model = imagePath,
-                        contentDescription = "Full Screen View",
-                        modifier = Modifier.fillMaxWidth(0.95f), // Leggero margine dai bordi
-                        contentScale = ContentScale.Fit
-                    )
                 }
             }
         }
 
-        AlertDialog(
-            onDismissRequest = onDismiss,
-            title = { Text("Modifica ${plant.name}") },
-            text = {
-                Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+        if (plantToArchive != null) {
+            AlertDialog(
+                onDismissRequest = { plantToArchive = null },
+                title = { Text("Archivia") },
+                text = { Text("Vuoi archiviare ${plantToArchive?.name}?") },
+                confirmButton = { Button(onClick = { plantToArchive?.let { onArchiveClick(it) }; plantToArchive = null }) { Text("Archivia") } },
+                dismissButton = { TextButton(onClick = { plantToArchive = null }) { Text("Annulla") } }
+            )
+        }
 
-                    // --- 1. ANTEPRIMA FOTO ---
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(200.dp) // L'abbiamo alzata un po' per vederla meglio
-                            .padding(bottom = 8.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color.Black.copy(alpha = 0.1f))
-                            .clickable { isImageZoomed = true }, // <--- CLICCA QUI PER INGRANDIRE
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (imagePath != null) {
-                            AsyncImage(
-                                model = imagePath,
-                                contentDescription = null,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop // "Crop" riempie il box, rendendo tutto più pulito
-                            )
-                            // Un piccolo suggerimento visivo per l'utente
-                            Icon(
-                                Icons.Default.Refresh, // O Icons.Default.ZoomIn se l'hai importata
-                                contentDescription = null,
-                                modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp),
-                                tint = Color.White.copy(alpha = 0.7f)
-                            )
-                        } else {
-                            Text("Nessuna foto", style = MaterialTheme.typography.bodySmall)
-                        }
+        if (plantToPostpone != null) {
+            var days by remember { mutableFloatStateOf(3f) }
+            AlertDialog(
+                onDismissRequest = { plantToPostpone = null },
+                title = { Text("Posticipa") },
+                text = {
+                    Column {
+                        Text("${days.toInt()} giorni")
+                        Slider(value = days, onValueChange = { days = it }, valueRange = 1f..14f, steps = 12)
                     }
+                },
+                confirmButton = { Button(onClick = { plantToPostpone?.let { viewModel.postponeWatering(it.id, days.toInt()) }; plantToPostpone = null }) { Text("OK") } },
+                dismissButton = { TextButton(onClick = { plantToPostpone = null }) { Text("Annulla") } }
+            )
+        }
 
-                    // --- 2. PULSANTI CAMBIA FOTO ---
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        Button(onClick = {
-                            val file = createImageFile(context)
-                            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                            imagePath = file.absolutePath
-                            cameraLauncher.launch(uri)
-                        }) { Text("📸 Foto") }
-
-                        Button(onClick = { galleryLauncher.launch("image/*") }) { Text("🖼️ Galleria") }
-                    }
-
-                    // --- 3. CAMPI TESTO (Nome e Frequenze) ---
-                    TextField(value = name, onValueChange = { name = it }, label = { Text("Nome") }, modifier = Modifier.fillMaxWidth())
-                    Spacer(modifier = Modifier.height(8.dp))
-                    TextField(value = waterDays, onValueChange = { waterDays = it }, label = { Text("Giorni Acqua") }, modifier = Modifier.fillMaxWidth())
-                    Spacer(modifier = Modifier.height(8.dp))
-                    TextField(value = fertDays, onValueChange = { fertDays = it }, label = { Text("Giorni Concime") }, modifier = Modifier.fillMaxWidth())
-
-                    // --- 4. SELEZIONE DATE ---
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Modifica date ultime cure:", style = MaterialTheme.typography.labelMedium)
-
-                    OutlinedButton(
-                        onClick = { pickingFor = "water"; showDatePicker = true },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                    ) {
-                        Text("Acqua: ${formatter.format(Date(selectedWateringDate))}")
-                    }
-
-                    OutlinedButton(
-                        onClick = { pickingFor = "fert"; showDatePicker = true },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text("Concime: ${formatter.format(Date(selectedFertilizedDate))}")
-                    }
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    onPlantUpdated(plant.copy(
-                        name = name,
-                        wateringDays = waterDays.toIntOrNull() ?: plant.wateringDays,
-                        fertilizationDays = fertDays.toIntOrNull() ?: plant.fertilizationDays,
-                        imagePath = imagePath,
-                        lastWatered = selectedWateringDate,
-                        lastFertilized = selectedFertilizedDate
-                    ))
-                }) { Text("Aggiorna") }
-            },
-            dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } }
-        )
-
-        // Logica del DatePicker
-        if (showDatePicker) {
-            DatePickerDialog(
-                onDismissRequest = { showDatePicker = false },
-                confirmButton = {
-                    TextButton(onClick = {
-                        val date = datePickerState.selectedDateMillis ?: System.currentTimeMillis()
-                        if (pickingFor == "water") selectedWateringDate = date
-                        else selectedFertilizedDate = date
-                        showDatePicker = false
-                    }) { Text("OK") }
-                }
-            ) { DatePicker(state = datePickerState) }
+        if (plantToDelete != null) {
+            AlertDialog(
+                onDismissRequest = { plantToDelete = null },
+                title = { Text("Elimina") },
+                text = { Text("Eliminare definitivamente ${plantToDelete?.name}?") },
+                confirmButton = { Button(onClick = { plantToDelete?.let { onDeleteClick(it) }; plantToDelete = null }, colors = ButtonDefaults.buttonColors(containerColor = Color.Red)) { Text("Elimina") } },
+                dismissButton = { TextButton(onClick = { plantToDelete = null }) { Text("Annulla") } }
+            )
         }
     }
 }
 
-fun getDaysRemaining(lastWatered: Long, wateringDays: Int): Int {
-    val nextWatering = lastWatered + (wateringDays.toLong() * 24 * 60 * 60 * 1000)
-    val remainingMillis = nextWatering - System.currentTimeMillis()
-    return (remainingMillis / (24 * 60 * 60 * 1000)).toInt()
+@Composable
+fun PlantItem(plant: Plant, isArchived: Boolean, onWaterClick: (Int) -> Unit, onFertilizeClick: (Int) -> Unit, onPlantClick: (Plant) -> Unit) {
+    val dayMillis = 24 * 60 * 60 * 1000L
+    val nextWater = plant.lastWatered + (plant.wateringDays * dayMillis)
+    val waterDiff = ((nextWater - System.currentTimeMillis()) / dayMillis).toInt()
+    
+    Card(modifier = Modifier.fillMaxWidth().padding(8.dp).alpha(if (isArchived) 0.6f else 1f).clickable { onPlantClick(plant) }) {
+        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (plant.imagePath != null) {
+                AsyncImage(model = plant.imagePath, contentDescription = null, modifier = Modifier.size(60.dp).clip(CircleShape), contentScale = ContentScale.Crop)
+            }
+            Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
+                Text(plant.name, style = MaterialTheme.typography.titleLarge)
+                if (!isArchived) {
+                    val color = if (waterDiff <= 0) Color.Red else Color(0xFF4CAF50)
+                    Text(if (waterDiff < 0) "RITARDO!" else if (waterDiff == 0) "Oggi" else "Tra $waterDiff gg", color = color, fontWeight = FontWeight.Bold)
+                } else Text("In archivio", color = Color.Gray)
+            }
+            if (!isArchived) {
+                IconButton(onClick = { onWaterClick(plant.id) }) { Icon(Icons.Default.WaterDrop, null, tint = Color(0xFF2196F3)) }
+                IconButton(onClick = { onFertilizeClick(plant.id) }) { Icon(Icons.Default.CheckCircle, null, tint = Color(0xFF9C27B0)) }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddPlantScreen(onPlantAdded: (String, Int, Int, String?, Long, Long) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var water by remember { mutableStateOf("7") }
+    var fert by remember { mutableStateOf("30") }
+    var imagePath by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { success -> 
+        if (!success) imagePath = null 
+    }
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> 
+        imagePath = uri?.toString() 
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Nuova Pianta") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Button(onClick = {
+                    val storageDir = context.getExternalFilesDir(Environment.DIRECTORY_PICTURES)
+                    val file = File(storageDir, "PLANT_${System.currentTimeMillis()}.jpg")
+                    imagePath = file.absolutePath
+                    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                    cameraLauncher.launch(uri)
+                }, modifier = Modifier.fillMaxWidth()) { Text("Foto") }
+                Button(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Galleria") }
+                TextField(value = name, onValueChange = { name = it }, label = { Text("Nome") })
+                TextField(value = water, onValueChange = { water = it }, label = { Text("Giorni acqua") })
+                TextField(value = fert, onValueChange = { fert = it }, label = { Text("Giorni concime") })
+            }
+        },
+        confirmButton = { Button(onClick = { onPlantAdded(name, water.toIntOrNull() ?: 7, fert.toIntOrNull() ?: 30, imagePath, System.currentTimeMillis(), System.currentTimeMillis()) }) { Text("Salva") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditPlantScreen(plant: Plant, onPlantUpdated: (Plant) -> Unit, onDismiss: () -> Unit) {
+    var name by remember { mutableStateOf(plant.name) }
+    var water by remember { mutableStateOf(plant.wateringDays.toString()) }
+    var fert by remember { mutableStateOf(plant.fertilizationDays.toString()) }
+    var imagePath by remember { mutableStateOf(plant.imagePath) }
+    var isZoomed by remember { mutableStateOf(false) }
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> 
+        imagePath = uri?.toString() 
+    }
+
+    if (isZoomed && imagePath != null) {
+        Dialog(onDismissRequest = { isZoomed = false }, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+            Box(modifier = Modifier.fillMaxSize().background(Color.Black).clickable { isZoomed = false }, contentAlignment = Alignment.Center) {
+                AsyncImage(model = imagePath, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Modifica") },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                if (imagePath != null) {
+                    AsyncImage(model = imagePath, contentDescription = null, modifier = Modifier.height(150.dp).fillMaxWidth().clip(RoundedCornerShape(8.dp)).clickable { isZoomed = true }, contentScale = ContentScale.Crop)
+                }
+                Button(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.fillMaxWidth()) { Text("Cambia Foto") }
+                TextField(value = name, onValueChange = { name = it }, label = { Text("Nome") })
+                TextField(value = water, onValueChange = { water = it }, label = { Text("Giorni acqua") })
+                TextField(value = fert, onValueChange = { fert = it }, label = { Text("Giorni concime") })
+            }
+        },
+        confirmButton = { Button(onClick = { onPlantUpdated(plant.copy(name = name, wateringDays = water.toIntOrNull() ?: plant.wateringDays, fertilizationDays = fert.toIntOrNull() ?: plant.fertilizationDays, imagePath = imagePath)) }) { Text("Salva") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } }
+    )
 }

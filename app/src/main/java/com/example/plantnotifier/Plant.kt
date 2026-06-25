@@ -12,5 +12,6 @@ data class Plant(
     val wateringDays: Int, // Ogni quanti giorni dare acqua
     val lastWatered: Long, // Data dell'ultima volta (timestamp)
     val fertilizationDays: Int, // Ogni quanti giorni concimare
-    val lastFertilized: Long = System.currentTimeMillis()
+    val lastFertilized: Long = System.currentTimeMillis(),
+    val isArchived: Boolean = false // Nuova proprietà per l'archivio
 )

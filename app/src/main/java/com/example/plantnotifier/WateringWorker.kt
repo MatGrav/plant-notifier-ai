@@ -6,22 +6,23 @@ import android.os.Environment
 import androidx.core.app.NotificationCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import kotlinx.coroutines.flow.first
 import java.io.File
 
 class WateringWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): Result {
         val db = PlantDatabase.getDatabase(applicationContext)
-        val plants = db.plantDao().getAllPlants().first()
+        // Usiamo la versione snapshot che restituisce la lista completa, poi filtriamo le attive
+        val allPlants = db.plantDao().getAllPlantsSnapshot()
+        val activePlants = allPlants.filter { !it.isArchived }
 
-        // 1. Filtra le piante che hanno sete
-        val thirstyPlants = plants.filter {
+        // 1. Filtra le piante attive che hanno sete
+        val thirstyPlants = activePlants.filter {
             getDaysRemaining(it.lastWatered, it.wateringDays) <= 0
         }
 
-        // 2. Filtra le piante che hanno bisogno di concime
-        val hungryPlants = plants.filter {
+        // 2. Filtra le piante attive che hanno bisogno di concime
+        val hungryPlants = activePlants.filter {
             getDaysRemaining(it.lastFertilized, it.fertilizationDays) <= 0
         }
 
@@ -39,8 +40,9 @@ class WateringWorker(context: Context, params: WorkerParameters) : CoroutineWork
 
             sendNotification(message) // Passiamo la stringa alla funzione di notifica
         }
+        
         try {
-            performSilentBackup(applicationContext, plants)
+            performSilentBackup(applicationContext, allPlants)
         } catch (e: Exception) {
             // Fallimento silenzioso del backup
         }
@@ -77,9 +79,22 @@ class WateringWorker(context: Context, params: WorkerParameters) : CoroutineWork
 
         notificationManager.notify(1, notification)
     }
+
     private fun performSilentBackup(context: Context, plants: List<Plant>) {
         val jsonString = StringBuilder("[\n")
-        // ... (stessa logica di costruzione stringa vista sopra) ...
+        plants.forEachIndexed { index, plant ->
+            val imageName = plant.imagePath?.let { File(it).name }
+            
+            jsonString.append("  {\n")
+            jsonString.append("    \"name\": \"${plant.name}\",\n")
+            jsonString.append("    \"days\": ${plant.wateringDays},\n")
+            jsonString.append("    \"lastWatered\": ${plant.lastWatered},\n")
+            jsonString.append("    \"fertDays\": ${plant.fertilizationDays},\n")
+            jsonString.append("    \"lastFert\": ${plant.lastFertilized},\n")
+            jsonString.append("    \"isArchived\": ${plant.isArchived},\n")
+            jsonString.append("    \"imageName\": ${if (imageName != null) "\"$imageName\"" else "null"}\n")
+            jsonString.append("  }${if (index < plants.size - 1) "," else ""}\n")
+        }
         jsonString.append("]")
 
         val downloadsFolder = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
