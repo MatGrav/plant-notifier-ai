@@ -7,8 +7,6 @@ plugins {
 
 android {
     namespace = "com.example.plantnotifier"
-    // Semplifichiamo il compileSdk: il valore 35 o 36 va bene,
-    // ma la sintassi "release(36)" che avevi usato non è standard
     compileSdk = 35
 
     defaultConfig {
@@ -36,7 +34,6 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
-    // Soluzione al warning della deprecazione
     kotlin {
         compilerOptions {
             jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11)
@@ -51,10 +48,10 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
 
-    // Nomi corretti in base al file TOML sopra
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
